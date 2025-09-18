@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sterling Horizon Global Limited - Admin Dashboard</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+    * { box-sizing: border-box; font-family: 'Roboto', sans-serif; margin: 0; padding: 0; }
+    body { background: #f4f6f8; color: #222; min-height: 100vh; }
+    header { background: #1a73e8; color: #fff; padding: 20px; text-align: center; }
+    header h1 { font-size: 1.6rem; font-weight: 700; }
+    .container { max-width: 1200px; margin: 30px auto; padding: 20px; }
+    .card { background: #fff; border-radius: 10px; padding: 18px; box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+    .topbar { display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom: 16px; flex-wrap:wrap; }
+    .left-controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    input#search { padding:10px 12px; border-radius:8px; border:1px solid #d1d7df; width:300px; }
+    button.btn { background:#1a73e8; color:#fff; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; font-weight:500; }
+    button.btn.secondary { background:#155ab6; }
+    .auth { display:flex; gap:10px; align-items:center; }
+    .auth input { padding:8px 10px; border-radius:8px; border:1px solid #d1d7df; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; overflow:auto; display:block; }
+    thead { background:#1a73e8; color:#fff; }
+    th, td { padding:12px 14px; text-align:left; border-bottom:1px solid #eee; white-space:nowrap; }
+    tbody tr:hover { background:#fafafa; }
+    a.download { color:#1a73e8; text-decoration:none; font-weight:500; }
+    a.download:hover { text-decoration:underline; }
+    .muted { color:#6b7280; font-size:0.95rem; }
+    .center { text-align:center; }
+    .hidden { display:none; }
+    @media (max-width: 900px) {
+        .topbar { flex-direction: column; align-items: stretch; }
+        input#search { width:100%; }
+        table { display:block; overflow-x:auto; }
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>Sterling Horizon Global Limited — Admin Dashboard</h1>
+</header>
+
+<div class="container">
+
+    <!-- Authentication Card -->
+    <div id="authCard" class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div>
+                <strong>Admin Sign In</strong>
+                <div class="muted">Sign in with your admin account to view applications.</div>
+            </div>
+
+            <div class="auth">
+                <input id="emailInput" type="email" placeholder="admin@example.com" />
+                <input id="passwordInput" type="password" placeholder="password" />
+                <button id="signInBtn" class="btn">Sign in</button>
+                <button id="signOutBtn" class="btn secondary hidden">Sign out</button>
+            </div>
+        </div>
+        <div id="authMsg" style="margin-top:12px;" class="muted">Email/Password authentication must be enabled in Firebase.</div>
+    </div>
+
+    <!-- Dashboard Card -->
+    <div id="dashboard" class="card hidden" style="margin-top:18px;">
+        <div class="topbar">
+            <div class="left-controls">
+                <input id="search" placeholder="Search by name, contact, or allowance type..." />
+                <button id="exportCsv" class="btn">Export CSV</button>
+                <button id="refreshBtn" class="btn secondary">Refresh</button>
+            </div>
+
+            <div style="display:flex; gap:12px; align-items:center;">
+                <div class="muted" id="currentAdmin"></div>
+                <button id="signOutBtn2" class="btn secondary">Sign out</button>
+            </div>
+        </div>
+
+        <div style="overflow:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>DOB</th>
+                        <th>Gender</th>
+                        <th>Address</th>
+                        <th>Contact</th>
+                        <th>Allowance Type</th>
+                        <th>Amount</th>
+                        <th>Reason</th>
+                        <th>Document</th>
+                        <th>Submitted On</th>
+                    </tr>
+                </thead>
+                <tbody id="applicationsTable">
+                    <!-- rows inserted dynamically -->
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top:12px;" class="muted">Applications update in real-time. Use Export CSV to download a snapshot.</div>
+    </div>
+
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+/**************************** CONFIGURATION ****************************/
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+
+// Admin emails allowed to access
+const ALLOWED_ADMINS = ["admin@example.com"];
+/***********************************************************************/
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const emailInput = document.getElementById('emailInput');
+const passwordInput = document.getElementById('passwordInput');
+const signInBtn = document.getElementById('signInBtn');
+const signOutBtn = document.getElementById('signOutBtn');
+const signOutBtn2 = document.getElementById('signOutBtn2');
+const authMsg = document.getElementById('authMsg');
+const authCard = document.getElementById('authCard');
+const dashboardCard = document.getElementById('dashboard');
+const currentAdminEl = document.getElementById('currentAdmin');
+const applicationsTable = document.getElementById('applicationsTable');
+const searchInput = document.getElementById('search');
+const exportCsvBtn = document.getElementById('exportCsv');
+const refreshBtn = document.getElementById('refreshBtn');
+
+let unsubscribeRealtime = null;
+let latestSnapshotDocs = [];
+
+// Sign In
+signInBtn.addEventListener('click', async () => {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) { authMsg.textContent = "Enter email and password."; return; }
+    try { await auth.signInWithEmailAndPassword(email, password); authMsg.textContent = "Signing in..."; } 
+    catch (err) { console.error(err); authMsg.textContent = "Sign-in failed: " + err.message; }
+});
+
+// Sign Out
+signOutBtn.addEventListener('click', () => auth.signOut());
+signOutBtn2.addEventListener('click', () => auth.signOut());
+
+// Auth state listener
+auth.onAuthStateChanged(async (user) => {
+    if(user){
+        if(!ALLOWED_ADMINS.includes(user.email)){
+            authMsg.textContent = "This account is not authorized."; await auth.signOut(); return;
+        }
+        hide(authCard); show(dashboardCard);
+        currentAdminEl.textContent = "Signed in as: " + user.email;
+        initRealtime();
+    } else {
+        show(authCard); hide(dashboardCard);
+        currentAdminEl.textContent = "";
+        if(typeof unsubscribeRealtime === 'function'){ unsubscribeRealtime(); unsubscribeRealtime = null; }
+        applicationsTable.innerHTML = "";
+    }
+});
+
+// Initialize realtime listener
+function initRealtime(){
+    if(typeof unsubscribeRealtime === 'function') unsubscribeRealtime();
+    unsubscribeRealtime = db.collection("allowanceApplications")
+        .orderBy("timestamp","desc")
+        .onSnapshot(snapshot => {
+            latestSnapshotDocs = [];
+            applicationsTable.innerHTML = "";
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                latestSnapshotDocs.push({id:doc.id, data});
+                const tr = document.createElement('tr');
+                const submittedOn = data.timestamp && data.timestamp.toDate ? data.timestamp.toDate().toLocaleString() : "";
+                tr.innerHTML = `
+                    <td>${escapeHtml(data.name||'')}</td>
+                    <td>${escapeHtml(data.dob||'')}</td>
+                    <td>${escapeHtml(data.gender||'')}</td>
+                    <td>${escapeHtml(data.address||'')}</td>
+                    <td>${escapeHtml(data.contact||'')}</td>
+                    <td>${escapeHtml(data.type||'')}</td>
+                    <td>${escapeHtml(data.amount||'')}</td>
+                    <td>${escapeHtml(data.reason||'')}</td>
+                    <td>${data.fileURL?`<a class="download" href="${data.fileURL}" target="_blank">Download</a>`:'No File'}</td>
+                    <td>${submittedOn}</td>
+                `;
+                applicationsTable.appendChild(tr);
+            });
+        }, err=>{ console.error(err); });
+}
+
+// HTML escape helper
+function escapeHtml(s){ return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
+
+// Search/filter
+searchInput.addEventListener('input', function(){
+    const q = this.value.trim().toLowerCase();
+    Array.from(applicationsTable.getElementsByTagName('tr')).forEach(row=>{
+        const text = Array.from(row.getElementsByTagName('td')).map(c=>c.textContent.toLowerCase()).join(' ');
+        row.style.display = text.includes(q)?'':'none';
+    });
+});
+
+// Export CSV
+exportCsvBtn.addEventListener('click', ()=>{
+    if(!latestSnapshotDocs.length){ alert("No applications to export."); return; }
+    const headers=["id","name","dob","gender","address","contact","type","amount","reason","fileURL","submittedOn"];
+    const rows = latestSnapshotDocs.map(item=>{
+        const d = item.data;
+        const submittedOn = d.timestamp && d.timestamp.toDate? d.timestamp.toDate().toISOString():'';
+        return [item.id,d.name||'',d.dob||'',d.gender||'',d.address||'',d.contact||'',d.type||'',d.amount||'',d.reason||'',d.fileURL||'',submittedOn];
+    });
+    const csvContent = [headers,...rows].map(r=>r.map(csvEscape).join(',')).join('\r\n');
+    downloadText(csvContent,"allowance_applications.csv");
+});
+function csvEscape(str){ return `"${String(str||'').replace(/"/g,'""')}"`; }
+function downloadText(text, filename){ const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(text); a.download=filename; a.click(); }
+
+// Refresh
+refreshBtn.addEventListener('click', ()=>{ if(unsubscribeRealtime){ unsubscribeRealtime(); initRealtime(); } });
+
+// Helpers
+function hide(el){ el.classList.add('hidden'); }
+function show(el){ el.classList.remove('hidden'); }
+
+</script>
+
+</body>
+</html>
